@@ -23,8 +23,15 @@ fi
 
 # ---- 1. 只读探针 ----
 echo "[probe] 公网 IP / 区域"
-VPSIP=$(curl -s --max-time 8 ipinfo.io/ip 2>/dev/null || curl -s --max-time 8 ifconfig.me 2>/dev/null || true)
-echo "  ip=$VPSIP"
+for ipapi in ipinfo.io/ip ifconfig.me ip.sb icanhazip.com; do
+    VPSIP=$(curl -s --max-time 8 "https://$ipapi" 2>/dev/null | tr -d '[:space:]' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' || true)
+    [ -n "$VPSIP" ] && { echo "  ip=$VPSIP (via $ipapi)"; break; }
+    echo "  probe $ipapi 失败，换下一个源..."
+done
+if [ -z "${VPSIP:-}" ]; then
+    echo "ERROR: 公网 IP 探测失败；请检查 VPS 是否有 http_proxy/https_proxy 环境变量干扰 curl（env | grep -i proxy）" >&2
+    exit 1
+fi
 
 echo "[probe] 端口 $PORT 是否空闲"
 if ss -ltn 2>/dev/null | grep -q ":$PORT "; then
@@ -63,6 +70,14 @@ fi
 mkdir -p "$PROXY_DIR"
 export PORT DEST
 if [ -f "$SECRETS" ]; then
+    # shellcheck disable=SC1090
+    source "$SECRETS"
+    if [ -z "${UUID:-}" ] || [ -z "${SID:-}" ] || [ -z "${TOKEN:-}" ] || [ -z "${PRIV:-}" ] || [ -z "${PUB:-}" ]; then
+        echo "[secrets] 已有凭据不完整(如 PRIV/PUB 为空)，删除重新生成"
+        rm -f "$SECRETS"
+    fi
+fi
+if [ -f "$SECRETS" ]; then
     echo "[secrets] 复用已有凭据"
     # shellcheck disable=SC1090
     source "$SECRETS"
@@ -72,8 +87,14 @@ else
     SID=$(openssl rand -hex 4)
     TOKEN=$(openssl rand -hex 16)
     KEYS=$("$XRAY_BIN" x25519 2>/dev/null)
-    PRIV=$(echo "$KEYS" | awk -F': ' '/Private key/{print $2}')
-    PUB=$(echo "$KEYS"  | awk -F': ' '/Public key/{print $2}')
+    # 兼容新旧输出格式：旧版 Private key:/Public key:；Xray≥26 改为 PrivateKey:/Password:/Hash32:（Password=原 Public key）
+    # 用前缀匹配规避大小写差异：新版 PrivateKey 大写 K，旧版 Private key 带空格
+    PRIV=$(echo "$KEYS" | awk -F': ?' '/^Private/{print $2}')
+    PUB=$(echo "$KEYS"  | awk -F': ?' '/^Public key|^Password/{print $2}')
+    if [ -z "$PRIV" ] || [ -z "$PUB" ]; then
+        echo "ERROR: xray x25519 密钥解析失败；请手动执行 'xray x25519' 查看输出（新版为 PrivateKey/Password/Hash32，Password 即公钥）" >&2
+        exit 1
+    fi
     cat > "$SECRETS" <<ENV
 UUID=$UUID
 SID=$SID
@@ -91,7 +112,18 @@ export UUID SID TOKEN PRIV PUB
 # ---- 4. 写 Xray 配置 ----
 echo "[config] 写 $XRAY_BIN 配置 -> /usr/local/etc/xray/config.json"
 python3 - <<'PYCFG'
-import os, json
+import os, json, subprocess, re
+# Xray ≥26 将 streamSettings 的传输方式字段由 network 改为 method，按版本自适应
+ver = 0
+try:
+    vout = subprocess.run(["/usr/local/bin/xray", "version"], capture_output=True, text=True, timeout=10).stdout
+    m = re.search(r"Xray\s+v?(\d+)\.", vout)
+    if m:
+        ver = int(m.group(1))
+except Exception:
+    pass
+transport = {"method": "raw", "rawSettings": {}} if ver >= 26 else {"network": "tcp"}
+print("  transport: Xray {} -> {}".format(ver, "method/raw" if ver >= 26 else "network/tcp"))
 cfg = {
     "log": {"loglevel": "warning"},
     "inbounds": [{
@@ -103,7 +135,7 @@ cfg = {
             "decryption": "none"
         },
         "streamSettings": {
-            "network": "tcp",
+            **transport,
             "security": "reality",
             "realitySettings": {
                 "show": False,
@@ -130,7 +162,13 @@ systemctl daemon-reload
 systemctl enable --now xray
 sleep 1
 echo "  xray active: $(systemctl is-active xray)"
-echo "  listening: $(ss -ltn 2>/dev/null | grep ":$PORT " || echo NONE)"
+if ss -ltn 2>/dev/null | grep -q ":$PORT "; then
+    echo "  listening: OK ($(ss -ltn 2>/dev/null | grep ":$PORT " | awk '{print $4}'))"
+else
+    echo "  listening: NONE"
+    echo "ERROR: xray 未监听 $PORT；排查日志: journalctl -u xray -e | tail -50" >&2
+    exit 1
+fi
 
 # ---- 6. ufw ----
 if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q active; then

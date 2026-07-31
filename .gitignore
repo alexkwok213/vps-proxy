@@ -2,5 +2,6 @@
 /opt/proxy/secrets.env
 /opt/proxy/sub.txt
 /opt/proxy/nginx-sub.conf
+/vps.yaml
 *.bak
 *.bak-*
