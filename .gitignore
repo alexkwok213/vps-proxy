@@ -1,0 +1,6 @@
+# 运行时凭据与生成物（含私钥，切勿提交）
+/opt/proxy/secrets.env
+/opt/proxy/sub.txt
+/opt/proxy/nginx-sub.conf
+*.bak
+*.bak-*
