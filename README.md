@@ -3,6 +3,8 @@
 在任意海外 VPS 上自建一个稳定的翻墙出口，替代/补充机场软件。
 协议为 **Xray + VLESS + REALITY**：免域名、免证书、抗 GFW 主动探测最强，全平台客户端通用。
 
+> 📖 **实操使用指南**（部署后取链接、Clash Verge Rev 导入坑点、故障排查等实测经验）：[docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md)
+
 ## 特性
 - 一键部署：单个 `deploy.sh` 自包含，TAT / SSH 以 root 跑一次即可。
 - 幂等：密钥首次随机生成后落盘 `/opt/proxy/secrets.env`，重跑不丢、不重复装。
