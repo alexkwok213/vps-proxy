@@ -22,9 +22,10 @@
 # 方式一：TAT（腾讯云等厂商的自动化助手）
 #   全选复制 deploy.sh 内容 → 控制台 → 自动化助手 → 以 root 执行
 
-# 方式二：SSH 直接跑
-curl -fsSL https://你的-raw-地址/deploy.sh | bash
-# 或把 deploy.sh 传上去后：bash deploy.sh
+# 方式二：SSH 直接跑（仓库为私有，无法匿名 curl raw 链接，推荐流式执行）
+ssh root@<你的VPS公网IP> 'bash -s' < deploy.sh
+# 或先把 deploy.sh 传到 VPS 再执行：
+scp deploy.sh root@<你的VPS公网IP>:/tmp/ && ssh root@<你的VPS公网IP> 'bash /tmp/deploy.sh'
 ```
 等待 1–3 分钟（首次安装 Xray）。执行完在输出里找 `============== CLIENT CONFIG ==============` 块：
 - **订阅 URL**：形如 `https://<你的VPS公网IP>/sub/<随机串>`，一键导入最省事。

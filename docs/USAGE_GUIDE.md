@@ -34,10 +34,12 @@
 2. 腾讯云控制台 → 自动化助手 → 新建执行任务 → 以 **root** 粘贴执行。
 3. 等待 1–3 分钟（首次会安装 Xray），查看输出。
 
-### 方式二：SSH
+### 方式二：SSH（仓库为私有，无法匿名 curl raw 链接）
 ```bash
-bash deploy.sh
-# 或 curl -fsSL <你的raw地址>/deploy.sh | bash
+# 流式执行（推荐，无需上传文件）：
+ssh root@<你的VPS公网IP> 'bash -s' < deploy.sh
+# 或先上传再执行：
+scp deploy.sh root@<你的VPS公网IP>:/tmp/ && ssh root@<你的VPS公网IP> 'bash /tmp/deploy.sh'
 ```
 
 脚本**幂等**：密钥首次随机生成后落盘 `/opt/proxy/secrets.env`，重跑不丢、不重复装、旧客户端不失效。
