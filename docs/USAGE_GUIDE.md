@@ -128,6 +128,23 @@ proxies:
   2. VPS 更换公网 IP → 链接变化（IP 是链接一部分）；
   3. 手动删除 `/opt/proxy` 目录。
 
+### 凭据轮换（怀疑泄漏时执行）
+
+> ⚠️ 节点链接（vless:// URI）含 UUID + Reality 公钥 + short-id，拿到即可直接导入客户端使用。
+> **任何情况下不要把它写进文档、截图、聊天记录或公开仓库**；一旦疑似泄漏，立即按下面步骤轮换。
+
+因为脚本是幂等的（已有 `/opt/proxy/secrets.env` 就复用旧凭据），**必须删掉凭据文件后重跑才会生成新凭据**：
+
+```bash
+rm -f /opt/proxy/secrets.env      # 1. 删除旧凭据（UUID / short-id / TOKEN / Reality 密钥对）
+bash deploy.sh                    # 2. 重跑脚本：生成全新凭据并重写 Xray 配置、自动重启
+```
+
+- 轮换后**旧链接立即失效**（旧 UUID 不再被接受），所有客户端需用新链接重新导入。
+- 新链接获取方式不变：看部署输出 `CLIENT CONFIG` 块，或 `cat /opt/proxy/sub.txt | base64 -d`。
+- 若使用订阅 URL：TOKEN 也同时变化，脚本会重写 nginx 订阅配置并 reload，订阅 URL 自动更新。
+- 彻底吊销（不再使用本节点）：直接 `systemctl stop xray` 旧链接即不可用，完整清理见第七节。
+
 ---
 
 ## 七、日常运维
@@ -165,9 +182,12 @@ ufw delete allow 2053/tcp         # 若开了 ufw
 
 ## 九、本次实测记录（2026-07-31）
 
-- **VPS**：腾讯云，公网 IP `<VPS公网IP>`，端口 `2053`，Xray `26.3.27`。
+> ⚠️ 实测产生的真实节点链接（含 UUID 与公网 IP）**已从文档中移除并替换为占位符**，以免仓库成为凭据载体。
+> 真实链接只存在于 VPS 的 `/opt/proxy/secrets.env` 与部署输出中，获取方式见第四节。
+
+- **VPS**：腾讯云，公网 IP `<VPS公网IP>`（实测值已脱敏），端口 `2053`，Xray `26.3.27`。
 - **nginx**：无（无订阅 URL，使用 Raw URI）。
-- **节点链接**（vless://，含 Reality 公钥 pbk，可安全公开；私钥仅在 VPS 的 secrets.env 中）：
+- **节点链接**（结构示例，字段说明见 5.1 的 YAML 对照；`<...>` 均为占位符）：
 
 ```
 vless://<UUID>@<VPS公网IP>:2053?encryption=none&flow=xtls-rprx-vision&security=reality&sni=www.apple.com&fp=chrome&pbk=<Reality公钥>&sid=<short-id>&type=tcp#CopyForge-VPS

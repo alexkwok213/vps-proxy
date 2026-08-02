@@ -218,7 +218,9 @@ location = /sub/$TOKEN {
     expires -1;
 }
 NGX
-    cp "$NGX_CONF" "$NGX_CONF.bak-proxy-$(date +%s)"
+    NGX_BACKUP="$NGX_CONF.bak-proxy-$(date +%s)"
+    cp "$NGX_CONF" "$NGX_BACKUP"
+    echo "  nginx 备份: $NGX_BACKUP"
     python3 - "$NGX_CONF" <<'PYNGX'
 import sys
 f = sys.argv[1]
@@ -236,11 +238,15 @@ if marker not in s:
 else:
     print("  nginx: include 已存在，跳过")
 PYNGX
-    if nginx -t 2>&1 | grep -q "test is successful"; then
+    if NGX_TEST=$(nginx -t 2>&1); then
         systemctl reload nginx
         echo "  nginx reloaded"
     else
-        echo "  WARN: nginx -t 失败，请检查 $NGX_CONF"
+        echo "ERROR: nginx -t 检查失败，订阅托管未生效，停止部署" >&2
+        echo "  $NGX_TEST" >&2
+        echo "ERROR: 排查: 检查 $NGX_CONF 的注入行与片段 $PROXY_DIR/nginx-sub.conf" >&2
+        echo "ERROR: 恢复最近备份: cp $NGX_BACKUP $NGX_CONF && nginx -t && systemctl reload nginx" >&2
+        exit 1
     fi
 else
     echo "[nginx] 未找到 443 配置，跳过订阅托管（用下方 Raw URI 即可）"

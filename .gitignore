@@ -5,3 +5,6 @@
 /vps.yaml
 *.bak
 *.bak-*
+
+# Qoder 运行产物
+.qoder/

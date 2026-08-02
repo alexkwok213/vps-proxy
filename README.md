@@ -61,10 +61,31 @@ ufw delete allow 2053/tcp       # 若开了 ufw
 # 最后去云控制台删安全组 2053 规则
 ```
 
+## 本地检查（改 deploy.sh 后的最小验证）
+
+改动脚本后、上 VPS 前，先在本机（Git Bash / WSL / Linux）跑一遍最小验证，避免把语法或配置生成错误带上线：
+
+```bash
+# 1) 语法检查
+bash -n deploy.sh
+
+# 2) 校验内嵌 python 生成 config.json 的逻辑（模拟凭据，输出到当前目录 config.check.json 后自动删除）
+export PORT=2053 DEST=www.apple.com UUID=11111111-1111-1111-1111-111111111111 SID=11223344 PRIV=testpriv PUB=testpub
+sed -n "/^python3 - <<'PYCFG'$/,/^PYCFG$/p" deploy.sh \
+  | sed '1d;$d; s#/usr/local/etc/xray/config.json#config.check.json#; s#os.makedirs("/usr/local/etc/xray", exist_ok=True)#pass#' \
+  | python3 -
+python3 -m json.tool config.check.json >/dev/null && echo "config.json 校验通过" && rm -f config.check.json
+```
+
+> Windows Git Bash 若提示找不到 `python3`，把上面的 `python3` 换成 `python`。
+> 如已安装 shellcheck，可加跑 `shellcheck deploy.sh`（未安装可跳过，不影响上面前两项）。
+
+> ⚠️ **实测边界**：`deploy.sh` 的 nginx 托管分支（订阅路径 `/sub/<TOKEN>` 注入与 reload）**从未在实测环境验证过**——实测 VPS 上没有 nginx，订阅 URL 功能在真实环境的表现仍待验证；没有 nginx 时直接用输出的 Raw `vless://` URI 即可。
+
 ## 工作原理（简述）
 Xray 在 `2053` 监听 VLESS+Reality 入站。Reality 让握手流量伪装成到某个真实大站（自动选 apple/microsoft/bing/cloudflare）的普通 TLS，因此无需自有域名/证书也难以被探测。客户端用 `xtls-rprx-vision` 流控。
 
 ## 注意
 - **线路质量**：取决于 VPS 到本地的线路，普通国际线通常不如优质机场的 CN2 专线；重度下载可能更慢。
 - **合规**：自建个人代理自用，是否合规由你按当地法规自行判断；本方案不对外服务、不记录访问日志、订阅路径随机长串。
-- **安全**：`/opt/proxy/secrets.env` 含私钥与凭据，`chmod 600`，切勿提交进 git（已写入 `.gitignore`）。
+- **安全**：`/opt/proxy/secrets.env` 含私钥与凭据，`chmod 600`，切勿提交进 git（已写入 `.gitignore`）。节点链接（vless:// URI）属于可用的完整凭据，**不要写进文档、截图或聊天记录**；怀疑泄漏时按 [docs/USAGE_GUIDE.md](docs/USAGE_GUIDE.md) 第六节「凭据轮换」操作（删除 `secrets.env` 后重跑脚本即可生成全新凭据）。
